@@ -3,7 +3,9 @@
 #----------------------------------------------------------------------------
 # deapr
 #  Perform DEAPR process on selected samples of raw data.
-# This process was described by Sue Rathe with initial code by Jeremy White.
+#
+# This process was described by Sue Rathe and initial code was written
+# by Jeremy White.
 #
 # Parameters:
 #   raw data        A tab delimited text file that includes a header row, and
@@ -29,11 +31,11 @@
 #  This will write a csv file suitable for import into Excel to stdout.
 #
 # Approach:
-#,Assign the gene type by referencing the PC Genes worksheet (using VLOOKUP)
-#Set min value,Sort Select samples by gene type
-#,Copy protein coding genes into set min value worksheet
-#,Calculate maximum value for each gene and delete MAX < 1
-#,Change all values < 0.01 to 0.01
+#  Select only rows that have a protein coding
+#  Select the two groups specified
+#  Apply the minimum fpkm to all groups
+#  If the maximum for a given pair of groups is below a threshold,
+#   do not include it
 #Apply DELV-SRMM logic,Cull out genes with low values and low fold changes
 #,   Delete any genes where both group averages are < 1
 #,   Delete any genes with fold change between -2 and +2
@@ -52,7 +54,26 @@
 #,Combine 90% of the fold change rank with 10% of the difference rank to get the weighted rank
 #,   (We should probably make the % modifiable by the user)
 #Final report,For publication
-##----------------------------------------------------------------------------
+#
+#
+#----------------------------------------------------------------------------
+# Copyright (c) 2023 Jeremy P White
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#----------------------------------------------------------------------------
 """
 
 import sys
