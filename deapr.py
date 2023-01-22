@@ -57,43 +57,49 @@
 
 import sys
 import csv
+import locale
 import argparse
 
 class Data:
-    """ Define an object to hold the data we read in.
-        Mostly because I prefer the visual aesthetic of an object.
-    """
+    """ Hold the raw data provided by the files """
     def __init__(self):
+        """ Construct the object """
         self.raw = []
         self.proteins = []
-
-    def add_raw(self, row):
+    def append_raw(self, row):
+        """ Add a row """
         self.raw.append(row)
-
-    def add_protein(self, row):
+    def append_proteins(self, row):
+        """ Add a row """
         self.proteins.append(row)
 
 def read_data(args):
+    """ Load the expected data from the raw data file and
+        the protein encodings file and return an object
+        that includes all of the raw data """
     data = Data()
     try:
-        with open(args.rawdata) as csvfile:
+        with open(args.rawdata, encoding=locale.getpreferredencoding()) as csvfile:
             reader = csv.DictReader(csvfile, dialect='excel-tab')
             for row in reader:
-                data.add_raw(row)
-    except:
-        print("Error: could not read {}".format(args.rawdata), file=sys.stderr)
-        return None, False
+                data.append_raw(row)
+    except FileNotFoundError:
+        print(f"Error: could not read {args.rawdata}", file=sys.stderr)
+        return None
+    csvfile.close()
 
     try:
-        with open(args.proteins) as csvfile:
-            reader = csv.DictReader(csvfile, fieldnames=['Ensembl ID', 'protein'], dialect='excel-tab')
+        with open(args.proteins, encoding=locale.getpreferredencoding()) as csvfile:
+            reader = csv.DictReader(csvfile, fieldnames=['Ensembl ID', 'protein'],
+                                    dialect='excel-tab')
             for row in reader:
-                data.add_protein(row)
-    except:
-        print("Error: could not read {}".format(args.rawdata), file=sys.stderr)
-        return None, False
+                data.append_proteins(row)
+    except FileNotFoundError:
+        print(f"Error: could not read {args.proteins}", file=sys.stderr)
+        return None
+    csvfile.close()
 
-    return data, True
+    return data
 
 def validate_args(args, data):
     """ Make sure groups are specified correctly """
@@ -121,8 +127,8 @@ def parse_args():
 
 def main(args):
     """ The mainline of execution for this module """
-    data, ret = read_data(args)
-    if not ret:
+    data = read_data(args)
+    if not data:
         sys.exit(1)
 
     if not validate_args(args, data):
