@@ -80,6 +80,7 @@ import sys
 import csv
 import locale
 import argparse
+import numpy as np
 
 # We have a few constants we use that are not parameterized
 #  We define them here
@@ -92,15 +93,11 @@ class Ensemble:
     """ Hold the data for a specific Ensemble ID """
     def __init__(self, row, group1, group2):
         """ Make a record for a specific data row """
-        self.group1 = []
-        self.group2 = []
-        self.max_value = -99999.0
         self.ensemble_id = row['Ensembl ID']
         self.gene_name = row['Gene Name']
-        for sample in group1:
-            self.group1.append(float(row[sample]))
-        for sample in group2:
-            self.group2.append(float(row[sample]))
+        self.group1 = np.array(list(float(row[sel]) for sel in group1))
+        self.group2 = np.array(list(float(row[sel]) for sel in group2))
+        self.max_value = np.amax(np.concatenate([self.group1, self.group2]))
 
 class Data:
     """ Hold the raw data provided by the files """
@@ -119,13 +116,10 @@ class Data:
                 for i, value in enumerate(ensemble.group1):
                     if value < args.minimum_fpkm:
                         ensemble.group1[i] = args.minimum_fpkm
-                    if value > ensemble.max_value:
-                        ensemble.max_value = value
                 for i, value in enumerate(ensemble.group2):
                     if value < args.minimum_fpkm:
                         ensemble.group2[i] = args.minimum_fpkm
-                    if value > ensemble.max_value:
-                        ensemble.max_value = value
+
                 if ensemble.max_value >= SAMPLE_CUTOFF:
                     self.selected.append(ensemble)
                 elif args.debug > 2:
