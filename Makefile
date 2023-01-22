@@ -1,2 +1,2 @@
 all:
-	pylint deapr.py
+	pylint --disable=R0903 deapr.py

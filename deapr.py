@@ -14,10 +14,10 @@
 #                    column 2 is 'protein coding' if the ensemble has a protein coding.
 #   first group     A comma delimited list of samples to use as the first group
 #                    The sample names must match the headers given in the rawdata.
-#   first name      A name for the first group.
+#   first name      A name for the first group. To be displayed in the final report.
 #   second group    A comma delimited list of samples to use as the second sample set
 #                    The sample names must match the headers given in the rawdata.
-#   second name     A nmae for the second group
+#   second name     A name for the second group. To be displayed in the final report.
 #
 # Options:
 #   --debug             Produce debug statements and intermediate data files.
@@ -28,7 +28,6 @@
 #  This will write a csv file suitable for import into Excel to stdout.
 #
 # Approach:
-#Select samples,In this case we are comparing S13-S15 to S16-S18
 #,Assign the gene type by referencing the PC Genes worksheet (using VLOOKUP)
 #Set min value,Sort Select samples by gene type
 #,Copy protein coding genes into set min value worksheet
@@ -60,18 +59,34 @@ import csv
 import locale
 import argparse
 
+class Ensemble:
+    """ Hold the data for a specific Ensemble ID """
+    def __init__(self, row, group1, group2):
+        """ Make a record for a specific data row """
+        self.group1 = []
+        self.group2 = []
+        self.ensemble_id = row['Ensembl ID']
+        self.gene_name = row['Gene Name']
+        for sample in group1:
+            self.group1.append(float(row[sample]))
+        for sample in group2:
+            self.group2.append(float(row[sample]))
+
 class Data:
     """ Hold the raw data provided by the files """
     def __init__(self):
         """ Construct the object """
         self.raw = []
         self.proteins = []
-    def append_raw(self, row):
-        """ Add a row """
-        self.raw.append(row)
-    def append_proteins(self, row):
-        """ Add a row """
-        self.proteins.append(row)
+        self.selected = []
+
+    def select(self, args):
+        """ Create a subset of the raw data that includes only proteins,
+            and the data requested by the groups """
+        for row in self.raw:
+            if row['Ensembl ID'] in self.proteins:
+                ensemble = Ensemble(row, args.group1.split(","), args.group2.split(","))
+                self.selected.append(ensemble)
 
 def read_data(args):
     """ Load the expected data from the raw data file and
@@ -82,7 +97,7 @@ def read_data(args):
         with open(args.rawdata, encoding=locale.getpreferredencoding()) as csvfile:
             reader = csv.DictReader(csvfile, dialect='excel-tab')
             for row in reader:
-                data.append_raw(row)
+                data.raw.append(row)
     except FileNotFoundError:
         print(f"Error: could not read {args.rawdata}", file=sys.stderr)
         return None
@@ -93,7 +108,8 @@ def read_data(args):
             reader = csv.DictReader(csvfile, fieldnames=['Ensembl ID', 'protein'],
                                     dialect='excel-tab')
             for row in reader:
-                data.append_proteins(row)
+                if row['protein'] == 'protein coding':
+                    data.proteins.append(row['Ensembl ID'])
     except FileNotFoundError:
         print(f"Error: could not read {args.proteins}", file=sys.stderr)
         return None
@@ -116,6 +132,10 @@ def validate_args(args, data):
             print(f"Error: {sample} is not a valid sample name", file=sys.stderr)
             return False
 
+    for sample in args.group2.split(","):
+        if not sample in valid_names:
+            print(f"Error: {sample} is not a valid sample name", file=sys.stderr)
+            return False
     return True
 
 
@@ -147,12 +167,11 @@ def main(args):
     if not validate_args(args, data):
         sys.exit(2)
 
-    print(data.proteins[0])
-
-    print("Hi mom")
-    print(args)
-    print(args.rawdata)
-    print(args.fold_weight)
+    data.select(args)
+    #print(data.selected[0].ensemble_id)
+    #print(data.selected[0].gene_name)
+    #print(data.selected[0].group1)
+    #print(data.selected[0].group2)
 
 if __name__ == "__main__":
     main(parse_args())
