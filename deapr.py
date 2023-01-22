@@ -20,8 +20,9 @@
 #   second name     A name for the second group. To be displayed in the final report.
 #
 # Options:
-#   --debug             Produce debug statements and intermediate data files.
+#   --debug=lvl         Produce debug statements and intermediate data files.
 #                       Debug output will be written to stderr.
+#                       Level is verbosity, starting at 1, higher means more
 #   --fold-weight=x     Adjust the default percent fold change weight, default 90
 #   --minimum-fpkm=x    Establish the default FPKM value, default 0.01
 # Output:
@@ -59,12 +60,20 @@ import csv
 import locale
 import argparse
 
+# We have a few constants we use that are not parameterized
+#  We define them here
+
+# If neither selected group has a value greater or equal to this amount,
+#  then we do not include the ensemble
+SAMPLE_CUTOFF = 1.0
+
 class Ensemble:
     """ Hold the data for a specific Ensemble ID """
     def __init__(self, row, group1, group2):
         """ Make a record for a specific data row """
         self.group1 = []
         self.group2 = []
+        self.max_value = -99999.0
         self.ensemble_id = row['Ensembl ID']
         self.gene_name = row['Gene Name']
         for sample in group1:
@@ -86,7 +95,22 @@ class Data:
         for row in self.raw:
             if row['Ensembl ID'] in self.proteins:
                 ensemble = Ensemble(row, args.group1.split(","), args.group2.split(","))
-                self.selected.append(ensemble)
+                for i, value in enumerate(ensemble.group1):
+                    if value < args.minimum_fpkm:
+                        ensemble.group1[i] = args.minimum_fpkm
+                    if value > ensemble.max_value:
+                        ensemble.max_value = value
+                for i, value in enumerate(ensemble.group2):
+                    if value < args.minimum_fpkm:
+                        ensemble.group2[i] = args.minimum_fpkm
+                    if value > ensemble.max_value:
+                        ensemble.max_value = value
+                if ensemble.max_value >= SAMPLE_CUTOFF:
+                    self.selected.append(ensemble)
+                elif args.debug > 2:
+                    print("Pruning " + row['Ensembl ID'] + "; max is " + str(ensemble.max_value))
+            elif args.debug > 2:
+                print("Not a protein " + row['Ensembl ID'])
 
 def read_data(args):
     """ Load the expected data from the raw data file and
@@ -151,8 +175,8 @@ def parse_args():
     parser.add_argument('group2')
     parser.add_argument('group2name')
     parser.add_argument('--fold-weight', action='store', default=90)
-    parser.add_argument('--minimum-fpkm', action='store', default=0.01)
-    parser.add_argument('-d', '--debug')
+    parser.add_argument('--minimum-fpkm', action='store', type=float, default=0.01)
+    parser.add_argument('-d', '--debug', action='store', type=int, default=0)
 
     args = parser.parse_args()
 
@@ -168,10 +192,10 @@ def main(args):
         sys.exit(2)
 
     data.select(args)
-    #print(data.selected[0].ensemble_id)
-    #print(data.selected[0].gene_name)
-    #print(data.selected[0].group1)
-    #print(data.selected[0].group2)
+    #print(data.selected[18].ensemble_id)
+    #print(data.selected[18].gene_name)
+    #print(data.selected[18].group1)
+    #print(data.selected[18].group2)
 
 if __name__ == "__main__":
     main(parse_args())
