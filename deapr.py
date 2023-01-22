@@ -36,16 +36,17 @@
 #  Apply the minimum fpkm to all groups
 #  If the maximum for a given pair of groups is below a threshold,
 #   do not include it
-#Apply DELV-SRMM logic,Cull out genes with low values and low fold changes
-#,   Delete any genes where both group averages are < 1
-#,   Delete any genes with fold change between -2 and +2
-#,Determine if they are DELV of SRMM candidates
-#,For DELV:
-#,   Look for cases in each group where the MAX/MIN if less than 2 (low variability)
-#,   We want to designate as KEEP (2 DELVs?) when both groups are DELVs
-#,For SRMM:
-#,   We want to designate SRMM genes as keep if:
-#,   The SRMM calculation is > 1.5 OR < -1.5 AND the minimum value in the higher group is > 1
+#  Apply DELV-SRMM logic, cull out genes with low values and low fold changes
+#    Delete any genes where both group averages are < 1
+#    Delete any genes with fold change between -2 and +2
+#  Determine if they are DELV of SRMM candidates
+#  For DELV:
+#    Look for cases in each group where the MAX/MIN if less than 2 (low variability)
+#    We want to designate as KEEP (2 DELVs?) when both groups are DELVs
+#  For SRMM:
+#    We want to designate SRMM genes as keep if:
+#    The SRMM calculation is > 1.5 OR < -1.5 AND the minimum value in the higher group is > 1
+#
 #Apply weights,Copy over the samples from the Apply DELV-SRMM logic
 #,   where the 2 DELVs? is 'KEEP' OR the SRMM? Is 'KEEP'
 #,Calculate the absolute fold change and the absolute difference of the values
@@ -89,18 +90,71 @@ import numpy as np
 #  We define them here
 
 # If neither selected group has a value greater or equal to this amount,
-#  then we do not include the ensemble
-SAMPLE_CUTOFF = 1.0
+#  then we do not include the gene
+SAMPLE_THRESHOLD = 1.0
+
+# If the averages of neither sample pass muster we do not include
+#  the row in the second pass results
+MAX_AVG_CUTOFF = 1.0
+
+# If absolute value of the fold change is not more than this cutoff,
+#  we do not include it in the second pass results.
+FOLD_CHANGE_CUTOFF = 2.0
+
+# If there is a lot of variability in the sample, we may not want
+#  it.  This is tracked as 'DELV'
+DELV_CUTOFF = 2.0
+
+# To keep the SRRM, we require that the samples included in it
+#  have a minimum above 1
+SRRM_MIN_CUTOFF = 1.0
+
+# And we want the SRRM itself to be 'interesting'
+SRRM_THRESHOLD = 1.5
 
 class Ensemble:
     """ Hold the data for a specific Ensemble ID """
-    def __init__(self, row, group1, group2):
+    def __init__(self, row, group1, group2, minimum_fpkm):
         """ Make a record for a specific data row """
-        self.ensemble_id = row['Ensembl ID']
+        self.eid = row['Ensembl ID']
         self.gene_name = row['Gene Name']
+
         self.group1 = np.array(list(float(row[sel]) for sel in group1))
+        self.group1[self.group1 < minimum_fpkm] = minimum_fpkm
+        self.group1_min = np.amin(self.group1)
+        self.group1_max = np.amax(self.group1)
+        self.group1_avg = np.average(self.group1)
+
         self.group2 = np.array(list(float(row[sel]) for sel in group2))
-        self.max_value = np.amax(np.concatenate([self.group1, self.group2]))
+        self.group2[self.group2 < minimum_fpkm] = minimum_fpkm
+        self.group2_min = np.amin(self.group2)
+        self.group2_max = np.amax(self.group2)
+        self.group2_avg = np.average(self.group2)
+
+        self.max_avg = max(self.group1_avg, self.group2_avg)
+        self.max_value = max(self.group1_max, self.group2_max)
+
+        self.keep_srrm = True
+        self.srrm = 0.0
+
+    def calculate_srrm(self):
+        """ Calculate the srrm and indicate if we should keep it """
+        self.keep_srrm = True
+        if self.group2_min > self.group1_max:
+            self.srrm = self.group2_min / self.group1_max
+            if self.group2_min < SRRM_MIN_CUTOFF:
+                self.keep_srrm = False
+        elif self.group1_min > self.group2_max:
+            self.srrm = -1 * self.group1_min / self.group2_max
+            if self.group1_min < SRRM_MIN_CUTOFF:
+                self.keep_srrm = False
+        else:
+            self.srrm = 1
+        if abs(self.srrm) <= SRRM_THRESHOLD:
+            self.keep_srrm = False
+
+
+
 
 class Data:
     """ Hold the raw data provided by the files """
@@ -108,29 +162,91 @@ class Data:
         """ Construct the object """
         self.raw = []
         self.proteins = []
-        self.selected = []
+        self.pass1 = []
+        self.pass2 = []
 
-    def select(self, args):
+    def run_pass1(self, args):
         """ Create a subset of the raw data that includes only proteins,
             and the data requested by the groups.  Prune and adjust it a bit as well """
         for row in self.raw:
             if row['Ensembl ID'] in self.proteins:
-                ensemble = Ensemble(row, args.group1.split(","), args.group2.split(","))
-                for i, value in enumerate(ensemble.group1):
-                    if value < args.minimum_fpkm:
-                        ensemble.group1[i] = args.minimum_fpkm
-                for i, value in enumerate(ensemble.group2):
-                    if value < args.minimum_fpkm:
-                        ensemble.group2[i] = args.minimum_fpkm
+                ensemble = Ensemble(row, args.group1.split(","), args.group2.split(","),
+                                    args.minimum_fpkm)
 
-                if ensemble.max_value >= SAMPLE_CUTOFF:
-                    self.selected.append(ensemble)
+                if ensemble.max_value >= SAMPLE_THRESHOLD:
+                    self.pass1.append(ensemble)
                 elif args.debug > 2:
-                    print("Pruning " + row['Ensembl ID'] + "; max is " + str(ensemble.max_value))
+                    print("Pruning " + row['Ensembl ID'] +
+                          "; max is " + str(ensemble.max_value), file=sys.stderr)
             elif args.debug > 2:
-                print("Not a protein " + row['Ensembl ID'])
+                print("Not a protein " + row['Ensembl ID'], file=sys.stderr)
 
-    def write_selected(self, args, fname):
+    def run_pass2(self, args):
+        """ Create a subset of the selected set that applies DELV and SRRM logic. """
+        for ensemble in self.pass1:
+            if ensemble.max_avg <= MAX_AVG_CUTOFF:
+                if args.debug > 2:
+                    print("Pruning " + ensemble.eid +
+                          "; max_avg is " + str(ensemble.max_avg), file=sys.stderr)
+                    continue
+
+            if ensemble.group2_avg > ensemble.group1_avg:
+                ensemble.fold_change = ensemble.group2_avg / ensemble.group1_avg
+            else:
+                ensemble.fold_change = ensemble.group1_avg / ensemble.group2_avg * -1.0
+
+            if abs(ensemble.fold_change) <= FOLD_CHANGE_CUTOFF:
+                if args.debug > 2:
+                    print("Pruning " + ensemble.eid +
+                          "; fold change is " + str(ensemble.fold_change), file=sys.stderr)
+                    continue
+
+            ensemble.calculate_srrm()
+
+            ensemble.delv1 = False
+            if ensemble.group1_max / ensemble.group1_min < DELV_CUTOFF:
+                ensemble.delv1 = True
+            ensemble.delv2 = False
+            if ensemble.group2_max / ensemble.group2_min < DELV_CUTOFF:
+                ensemble.delv2 = True
+
+            self.pass2.append(ensemble)
+
+
+    def write_pass2(self, outfile, ensemble):
+        """ Debug function to write out the values after pass2 """
+        outfile.write(f"{ensemble.group1_avg},")
+        outfile.write(f"{ensemble.group2_avg},")
+        outfile.write(f"{ensemble.fold_change},")
+        outfile.write(f"{ensemble.max_avg},")
+        outfile.write(f"{ensemble.group1_min},")
+        outfile.write(f"{ensemble.group1_max},")
+        mcalc = ensemble.group1_max / ensemble.group1_min
+        outfile.write(f"{mcalc},")
+        if ensemble.delv1:
+            outfile.write("KEEP,")
+        else:
+            outfile.write(",")
+
+        outfile.write(f"{ensemble.group2_min},")
+        outfile.write(f"{ensemble.group2_max},")
+        mcalc = ensemble.group2_max / ensemble.group2_min
+        outfile.write(f"{mcalc},")
+        if ensemble.delv2:
+            outfile.write("KEEP,")
+        else:
+            outfile.write(",")
+        if ensemble.delv1 and ensemble.delv2:
+            outfile.write("KEEP,")
+        else:
+            outfile.write(",")
+        outfile.write(f"{ensemble.srrm},")
+        if ensemble.keep_srrm:
+            outfile.write("KEEP,")
+        else:
+            outfile.write(",")
+
+    def write_selected(self, args, fname, use_pass2):
         """ For debug purposes, write the selected data out. """
         with open(fname, "w", encoding=locale.getpreferredencoding()) as outfile:
             outfile.write("Ensembl ID,Gene Name,")
@@ -138,15 +254,29 @@ class Data:
                 outfile.write(sample + ",")
             for sample in args.group2.split(","):
                 outfile.write(sample + ",")
-            outfile.write("Max\n")
 
-            for ensemble in self.selected:
-                outfile.write(f"{ensemble.ensemble_id},{ensemble.gene_name},")
+            if not use_pass2:
+                outfile.write("Max\n")
+            else:
+                outfile.write("Avg Grp 1,Avg Grp 2,Fold chg (2+/-),Max Avg > 1," +
+                              "Min,Max,Max/Min < 2,DELV?,Min,Max ,Max/Min < 2," +
+                              "DELV?,2 DELVs?,SRMM,SRMM?\n")
+
+            list_to_use = self.pass1
+            if use_pass2:
+                list_to_use = self.pass2
+            for ensemble in list_to_use:
+                outfile.write(f"{ensemble.eid},{ensemble.gene_name},")
                 for sample in ensemble.group1:
                     outfile.write(f"{sample},")
                 for sample in ensemble.group2:
                     outfile.write(f"{sample},")
-                outfile.write(str(ensemble.max_value) + "\n")
+                if not use_pass2:
+                    outfile.write(f"{ensemble.max_value},")
+                else:
+                    self.write_pass2(outfile, ensemble)
+
+                outfile.write("\n")
             outfile.close()
 
 def read_data(args):
@@ -228,15 +358,15 @@ def main(args):
     if not validate_args(args, data):
         sys.exit(2)
 
-    data.select(args)
+    data.run_pass1(args)
 
     if args.debug > 1:
-        data.write_selected(args, "selected.csv")
+        data.write_selected(args, "pass1.csv", False)
 
-    #print(data.selected[18].ensemble_id)
-    #print(data.selected[18].gene_name)
-    #print(data.selected[18].group1)
-    #print(data.selected[18].group2)
+    data.run_pass2(args)
+    if args.debug > 1:
+        data.write_selected(args, "pass2.csv", True)
+
 
 if __name__ == "__main__":
     main(parse_args())
