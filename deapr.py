@@ -66,6 +66,9 @@
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 #
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -109,7 +112,7 @@ class Data:
 
     def select(self, args):
         """ Create a subset of the raw data that includes only proteins,
-            and the data requested by the groups """
+            and the data requested by the groups.  Prune and adjust it a bit as well """
         for row in self.raw:
             if row['Ensembl ID'] in self.proteins:
                 ensemble = Ensemble(row, args.group1.split(","), args.group2.split(","))
@@ -128,7 +131,7 @@ class Data:
                 print("Not a protein " + row['Ensembl ID'])
 
     def write_selected(self, args, fname):
-        """ For debug purposes, write the selecte data out. """
+        """ For debug purposes, write the selected data out. """
         with open(fname, "w", encoding=locale.getpreferredencoding()) as outfile:
             outfile.write("Ensembl ID,Gene Name,")
             for sample in args.group1.split(","):
