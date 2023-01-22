@@ -112,6 +112,25 @@ class Data:
             elif args.debug > 2:
                 print("Not a protein " + row['Ensembl ID'])
 
+    def write_selected(self, args, fname):
+        """ For debug purposes, write the selecte data out. """
+        with open(fname, "w", encoding=locale.getpreferredencoding()) as outfile:
+            outfile.write("Ensembl ID,Gene Name,")
+            for sample in args.group1.split(","):
+                outfile.write(sample + ",")
+            for sample in args.group2.split(","):
+                outfile.write(sample + ",")
+            outfile.write("Max\n")
+
+            for ensemble in self.selected:
+                outfile.write(f"{ensemble.ensemble_id},{ensemble.gene_name},")
+                for sample in ensemble.group1:
+                    outfile.write(f"{sample},")
+                for sample in ensemble.group2:
+                    outfile.write(f"{sample},")
+                outfile.write(str(ensemble.max_value) + "\n")
+            outfile.close()
+
 def read_data(args):
     """ Load the expected data from the raw data file and
         the protein encodings file and return an object
@@ -192,6 +211,10 @@ def main(args):
         sys.exit(2)
 
     data.select(args)
+
+    if args.debug > 1:
+        data.write_selected(args, "selected.csv")
+
     #print(data.selected[18].ensemble_id)
     #print(data.selected[18].gene_name)
     #print(data.selected[18].group1)
