@@ -103,6 +103,19 @@ def read_data(args):
 
 def validate_args(args, data):
     """ Make sure groups are specified correctly """
+    valid_names = []
+    for name in data.raw[0]:
+        valid_names.append(name)
+    if not (valid_names[0] == 'Ensembl ID' and valid_names[1] == 'Gene Name'):
+        print(f"Error: {args.rawdata} does not have expected column headers", file=sys.stderr)
+        return False
+
+    valid_names = valid_names[2:]
+    for sample in args.group1.split(","):
+        if not sample in valid_names:
+            print(f"Error: {sample} is not a valid sample name", file=sys.stderr)
+            return False
+
     return True
 
 
