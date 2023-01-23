@@ -154,10 +154,12 @@ class Ensemble:
             self.keep_srrm = False
 
 
-def sort_srrm(ensemble):
-    return abs(ensemble.srrm)
+def sort_fold(ensemble):
+    """ Support sorting by fold, ideally descending """
+    return abs(ensemble.fold_change)
 
 def sort_diff(ensemble):
+    """ Support sorting by the delta in the averages, ideally descending """
     return ensemble.avg_diff
 
 class Data:
@@ -231,55 +233,16 @@ class Data:
 
             self.pass3.append(ensemble)
 
-        self.pass3.sort(key=sort_srrm, reverse=True)
-        for i in range(0, len(self.pass3)):
-            self.pass3[i].fold_rank = i + 1
+        self.pass3.sort(key=sort_fold, reverse=True)
+        for i, ensemble in enumerate(self.pass3):
+            ensemble.fold_rank = i + 1
 
         self.pass3.sort(key=sort_diff, reverse=True)
-        for i in range(0, len(self.pass3)):
-            self.pass3[i].diff_rank = i + 1
+        for i, ensemble in enumerate(self.pass3):
+            ensemble.diff_rank = i + 1
+            ensemble.weighted_rank = (args.fold_weight_float * ensemble.fold_rank) + \
+                              (1.0 - args.fold_weight_float) * ensemble.diff_rank
 
-
-    def write_pass3(self, outfile, ensemble):
-        outfile.write(",")
-        outfile.write(f"{abs(ensemble.fold_change)},")
-        outfile.write(f"{abs(ensemble.avg_diff)},")
-        outfile.write(f"{ensemble.fold_rank},")
-        outfile.write(f"{ensemble.diff_rank},")
-        # TODO outfile.write(f"{abs(ensemble.weighted_rank}")
-
-    def write_pass2(self, outfile, ensemble):
-        """ Debug function to write out the values after pass2 """
-        outfile.write(f"{ensemble.group1_avg},")
-        outfile.write(f"{ensemble.group2_avg},")
-        outfile.write(f"{ensemble.fold_change},")
-        outfile.write(f"{ensemble.max_avg},")
-        outfile.write(f"{ensemble.group1_min},")
-        outfile.write(f"{ensemble.group1_max},")
-        mcalc = ensemble.group1_max / ensemble.group1_min
-        outfile.write(f"{mcalc},")
-        if ensemble.delv1:
-            outfile.write("KEEP,")
-        else:
-            outfile.write(",")
-
-        outfile.write(f"{ensemble.group2_min},")
-        outfile.write(f"{ensemble.group2_max},")
-        mcalc = ensemble.group2_max / ensemble.group2_min
-        outfile.write(f"{mcalc},")
-        if ensemble.delv2:
-            outfile.write("KEEP,")
-        else:
-            outfile.write(",")
-        if ensemble.delv1 and ensemble.delv2:
-            outfile.write("KEEP,")
-        else:
-            outfile.write(",")
-        outfile.write(f"{ensemble.srrm},")
-        if ensemble.keep_srrm:
-            outfile.write("KEEP,")
-        else:
-            outfile.write(",")
 
     def write_selected(self, args, fname, use_pass2, use_pass3):
         """ For debug purposes, write the selected data out. """
@@ -297,7 +260,7 @@ class Data:
                               "Min,Max,Max/Min < 2,DELV?,Min,Max ,Max/Min < 2," +
                               "DELV?,2 DELVs?,SRMM,SRMM?")
             if use_pass3:
-                outfile.write("Abs fold,Abs diff,Rank fold,Rank diff,Wgt rank")
+                outfile.write(",Abs fold,Abs diff,Rank fold,Rank diff,Wgt rank")
             outfile.write("\n")
 
 
@@ -307,20 +270,65 @@ class Data:
             elif use_pass2:
                 list_to_use = self.pass2
             for ensemble in list_to_use:
-                outfile.write(f"{ensemble.eid},{ensemble.gene_name},")
-                for sample in ensemble.group1:
-                    outfile.write(f"{sample},")
-                for sample in ensemble.group2:
-                    outfile.write(f"{sample},")
-                if not use_pass2:
-                    outfile.write(f"{ensemble.max_value},")
-                else:
-                    self.write_pass2(outfile, ensemble)
+                write_pass1(outfile, ensemble, not use_pass2)
+                if use_pass2:
+                    write_pass2(outfile, ensemble)
                 if use_pass3:
-                    self.write_pass3(outfile, ensemble)
-
+                    write_pass3(outfile, ensemble)
                 outfile.write("\n")
             outfile.close()
+
+def write_pass1(outfile, ensemble, write_max):
+    """ Write out basic information common to all passes """
+    outfile.write(f"{ensemble.eid},{ensemble.gene_name},")
+    for sample in ensemble.group1:
+        outfile.write(f"{sample},")
+    for sample in ensemble.group2:
+        outfile.write(f"{sample},")
+    if write_max:
+        outfile.write(f"{ensemble.max_value},")
+
+def write_pass2(outfile, ensemble):
+    """ Debug function to write out the values after pass2 """
+    outfile.write(f"{ensemble.group1_avg},")
+    outfile.write(f"{ensemble.group2_avg},")
+    outfile.write(f"{ensemble.fold_change},")
+    outfile.write(f"{ensemble.max_avg},")
+    outfile.write(f"{ensemble.group1_min},")
+    outfile.write(f"{ensemble.group1_max},")
+    mcalc = ensemble.group1_max / ensemble.group1_min
+    outfile.write(f"{mcalc},")
+    if ensemble.delv1:
+        outfile.write("KEEP,")
+    else:
+        outfile.write(",")
+
+    outfile.write(f"{ensemble.group2_min},")
+    outfile.write(f"{ensemble.group2_max},")
+    mcalc = ensemble.group2_max / ensemble.group2_min
+    outfile.write(f"{mcalc},")
+    if ensemble.delv2:
+        outfile.write("KEEP,")
+    else:
+        outfile.write(",")
+    if ensemble.delv1 and ensemble.delv2:
+        outfile.write("KEEP,")
+    else:
+        outfile.write(",")
+    outfile.write(f"{ensemble.srrm},")
+    if ensemble.keep_srrm:
+        outfile.write("KEEP")
+
+def write_pass3(outfile, ensemble):
+    """ Write data out generated in pass 3 """
+    outfile.write(",")
+    outfile.write(f"{abs(ensemble.fold_change)},")
+    outfile.write(f"{abs(ensemble.avg_diff)},")
+    outfile.write(f"{ensemble.fold_rank},")
+    outfile.write(f"{ensemble.diff_rank},")
+    outfile.write(f"{abs(ensemble.weighted_rank)}")
+
+
 
 def read_data(args):
     """ Load the expected data from the raw data file and
@@ -389,6 +397,8 @@ def parse_args():
     parser.add_argument('-d', '--debug', action='store', type=int, default=0)
 
     args = parser.parse_args()
+
+    args.fold_weight_float = float(args.fold_weight) / 100.0
 
     return args
 
