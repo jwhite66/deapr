@@ -46,15 +46,14 @@
 #  For SRMM:
 #    We want to designate SRMM genes as keep if:
 #    The SRMM calculation is > 1.5 OR < -1.5 AND the minimum value in the higher group is > 1
+#  Apply weights
+#    First, keep only samples with SRRM to keep or 2 DELVs
+#    Calculate the absolute fold change and the absolute difference of the values
+#    Sort the absolute value of the fold change (descending) and apply a rank (starting with 1)
+#    Sort the absolute value of the FPKM difference (descending) and apply a rank (starting with 1)
+#    Combine 90% of the fold change rank with 10% of the difference rank to get the weighted rank
 #
-#Apply weights,Copy over the samples from the Apply DELV-SRMM logic
-#,   where the 2 DELVs? is 'KEEP' OR the SRMM? Is 'KEEP'
-#,Calculate the absolute fold change and the absolute difference of the values
-#,Sort the absolute value of the fold change (descending) and apply a rank (starting with 1)
-#,Sort the absolute value of the FPKM difference (descending) and apply a rank (starting with 1)
-#,Combine 90% of the fold change rank with 10% of the difference rank to get the weighted rank
-#,   (We should probably make the % modifiable by the user)
-#Final report,For publication
+#  Final report,For publication
 #
 #
 #----------------------------------------------------------------------------
@@ -133,6 +132,7 @@ class Ensemble:
 
         self.max_avg = max(self.group1_avg, self.group2_avg)
         self.max_value = max(self.group1_max, self.group2_max)
+        self.avg_diff = abs(self.group1_avg - self.group2_avg)
 
         self.keep_srrm = True
         self.srrm = 0.0
@@ -154,7 +154,11 @@ class Ensemble:
             self.keep_srrm = False
 
 
+def sort_srrm(ensemble):
+    return abs(ensemble.srrm)
 
+def sort_diff(ensemble):
+    return ensemble.avg_diff
 
 class Data:
     """ Hold the raw data provided by the files """
@@ -164,6 +168,7 @@ class Data:
         self.proteins = []
         self.pass1 = []
         self.pass2 = []
+        self.pass3 = []
 
     def run_pass1(self, args):
         """ Create a subset of the raw data that includes only proteins,
@@ -212,6 +217,36 @@ class Data:
 
             self.pass2.append(ensemble)
 
+    def run_pass3(self, args):
+        """ Create a subset that has either both DELVs or SRRM
+            and then establish a ranking """
+        for ensemble in self.pass2:
+            if not ensemble.keep_srrm and not (ensemble.delv1 and ensemble.delv2):
+                if args.debug > 2:
+                    print(f"Pruning {ensemble.eid}; keep_srrm {ensemble.keep_srrm}; " +
+                          f"delve {ensemble.delv1}/{ensemble.delv2}",
+                          file=sys.stderr)
+                    continue
+
+
+            self.pass3.append(ensemble)
+
+        self.pass3.sort(key=sort_srrm, reverse=True)
+        for i in range(0, len(self.pass3)):
+            self.pass3[i].fold_rank = i + 1
+
+        self.pass3.sort(key=sort_diff, reverse=True)
+        for i in range(0, len(self.pass3)):
+            self.pass3[i].diff_rank = i + 1
+
+
+    def write_pass3(self, outfile, ensemble):
+        outfile.write(",")
+        outfile.write(f"{abs(ensemble.fold_change)},")
+        outfile.write(f"{abs(ensemble.avg_diff)},")
+        outfile.write(f"{ensemble.fold_rank},")
+        outfile.write(f"{ensemble.diff_rank},")
+        # TODO outfile.write(f"{abs(ensemble.weighted_rank}")
 
     def write_pass2(self, outfile, ensemble):
         """ Debug function to write out the values after pass2 """
@@ -246,7 +281,7 @@ class Data:
         else:
             outfile.write(",")
 
-    def write_selected(self, args, fname, use_pass2):
+    def write_selected(self, args, fname, use_pass2, use_pass3):
         """ For debug purposes, write the selected data out. """
         with open(fname, "w", encoding=locale.getpreferredencoding()) as outfile:
             outfile.write("Ensembl ID,Gene Name,")
@@ -256,14 +291,20 @@ class Data:
                 outfile.write(sample + ",")
 
             if not use_pass2:
-                outfile.write("Max\n")
+                outfile.write("Max")
             else:
                 outfile.write("Avg Grp 1,Avg Grp 2,Fold chg (2+/-),Max Avg > 1," +
                               "Min,Max,Max/Min < 2,DELV?,Min,Max ,Max/Min < 2," +
-                              "DELV?,2 DELVs?,SRMM,SRMM?\n")
+                              "DELV?,2 DELVs?,SRMM,SRMM?")
+            if use_pass3:
+                outfile.write("Abs fold,Abs diff,Rank fold,Rank diff,Wgt rank")
+            outfile.write("\n")
+
 
             list_to_use = self.pass1
-            if use_pass2:
+            if use_pass3:
+                list_to_use = self.pass3
+            elif use_pass2:
                 list_to_use = self.pass2
             for ensemble in list_to_use:
                 outfile.write(f"{ensemble.eid},{ensemble.gene_name},")
@@ -275,6 +316,8 @@ class Data:
                     outfile.write(f"{ensemble.max_value},")
                 else:
                     self.write_pass2(outfile, ensemble)
+                if use_pass3:
+                    self.write_pass3(outfile, ensemble)
 
                 outfile.write("\n")
             outfile.close()
@@ -361,11 +404,15 @@ def main(args):
     data.run_pass1(args)
 
     if args.debug > 1:
-        data.write_selected(args, "pass1.csv", False)
+        data.write_selected(args, "pass1.csv", False, False)
 
     data.run_pass2(args)
     if args.debug > 1:
-        data.write_selected(args, "pass2.csv", True)
+        data.write_selected(args, "pass2.csv", True, False)
+
+    data.run_pass3(args)
+    if args.debug > 1:
+        data.write_selected(args, "pass3.csv", True, True)
 
 
 if __name__ == "__main__":
