@@ -193,7 +193,7 @@ class Data:
                 if args.debug > 2:
                     print("Pruning " + ensemble.eid +
                           "; max_avg is " + str(ensemble.max_avg), file=sys.stderr)
-                    continue
+                continue
 
             if ensemble.group2_avg > ensemble.group1_avg:
                 ensemble.fold_change = ensemble.group2_avg / ensemble.group1_avg
@@ -204,7 +204,7 @@ class Data:
                 if args.debug > 2:
                     print("Pruning " + ensemble.eid +
                           "; fold change is " + str(ensemble.fold_change), file=sys.stderr)
-                    continue
+                continue
 
             ensemble.calculate_srrm()
 
@@ -226,7 +226,7 @@ class Data:
                     print(f"Pruning {ensemble.eid}; keep_srrm {ensemble.keep_srrm}; " +
                           f"delve {ensemble.delv1}/{ensemble.delv2}",
                           file=sys.stderr)
-                    continue
+                continue
 
 
             self.pass3.append(ensemble)
