@@ -53,7 +53,7 @@
 #    Sort the absolute value of the FPKM difference (descending) and apply a rank (starting with 1)
 #    Combine 90% of the fold change rank with 10% of the difference rank to get the weighted rank
 #
-#  Final report,For publication
+#  Write out a final report
 #
 #
 #----------------------------------------------------------------------------
@@ -162,6 +162,10 @@ def sort_diff(ensemble):
     """ Support sorting by the delta in the averages, ideally descending """
     return ensemble.avg_diff
 
+def sort_weighted(ensemble):
+    """ Sort by the weighted rank """
+    return ensemble.weighted_rank
+
 class Data:
     """ Hold the raw data provided by the files """
     def __init__(self):
@@ -243,40 +247,41 @@ class Data:
             ensemble.weighted_rank = (args.fold_weight_float * ensemble.fold_rank) + \
                               (1.0 - args.fold_weight_float) * ensemble.diff_rank
 
+        self.pass3.sort(key=sort_weighted)
 
-    def write_selected(self, args, fname, use_pass2, use_pass3):
-        """ For debug purposes, write the selected data out. """
-        with open(fname, "w", encoding=locale.getpreferredencoding()) as outfile:
-            outfile.write("Ensembl ID,Gene Name,")
-            for sample in args.group1.split(","):
-                outfile.write(sample + ",")
-            for sample in args.group2.split(","):
-                outfile.write(sample + ",")
 
-            if not use_pass2:
-                outfile.write("Max")
-            else:
-                outfile.write("Avg Grp 1,Avg Grp 2,Fold chg (2+/-),Max Avg > 1," +
-                              "Min,Max,Max/Min < 2,DELV?,Min,Max ,Max/Min < 2," +
-                              "DELV?,2 DELVs?,SRMM,SRMM?")
+#------------------------------------------------------------------------------
+#  The following functions are just for debug purpose; they let us create
+#   .csv files which show the intermediate steps.  That is particularly
+#   useful for comparing to Sue's original spreadsheets.
+#------------------------------------------------------------------------------
+def write_selected(list_to_use, args, fname, use_pass2, use_pass3):
+    """ For debug purposes, write the selected data out. """
+    with open(fname, "w", encoding=locale.getpreferredencoding()) as outfile:
+        outfile.write("Ensembl ID,Gene Name,")
+        for sample in args.group1.split(","):
+            outfile.write(sample + ",")
+        for sample in args.group2.split(","):
+            outfile.write(sample + ",")
+
+        if not use_pass2:
+            outfile.write("Max")
+        else:
+            outfile.write("Avg Grp 1,Avg Grp 2,Fold chg (2+/-),Max Avg > 1," +
+                          "Min,Max,Max/Min < 2,DELV?,Min,Max ,Max/Min < 2," +
+                          "DELV?,2 DELVs?,SRMM,SRMM?")
+        if use_pass3:
+            outfile.write(",Abs fold,Abs diff,Rank fold,Rank diff,Wgt rank")
+        outfile.write("\n")
+
+        for ensemble in list_to_use:
+            write_pass1(outfile, ensemble, not use_pass2)
+            if use_pass2:
+                write_pass2(outfile, ensemble)
             if use_pass3:
-                outfile.write(",Abs fold,Abs diff,Rank fold,Rank diff,Wgt rank")
+                write_pass3(outfile, ensemble)
             outfile.write("\n")
-
-
-            list_to_use = self.pass1
-            if use_pass3:
-                list_to_use = self.pass3
-            elif use_pass2:
-                list_to_use = self.pass2
-            for ensemble in list_to_use:
-                write_pass1(outfile, ensemble, not use_pass2)
-                if use_pass2:
-                    write_pass2(outfile, ensemble)
-                if use_pass3:
-                    write_pass3(outfile, ensemble)
-                outfile.write("\n")
-            outfile.close()
+        outfile.close()
 
 def write_pass1(outfile, ensemble, write_max):
     """ Write out basic information common to all passes """
@@ -414,15 +419,15 @@ def main(args):
     data.run_pass1(args)
 
     if args.debug > 1:
-        data.write_selected(args, "pass1.csv", False, False)
+        write_selected(data.pass1, args, "pass1.csv", False, False)
 
     data.run_pass2(args)
     if args.debug > 1:
-        data.write_selected(args, "pass2.csv", True, False)
+        write_selected(data.pass2, args, "pass2.csv", True, False)
 
     data.run_pass3(args)
     if args.debug > 1:
-        data.write_selected(args, "pass3.csv", True, True)
+        write_selected(data.pass3, args, "pass3.csv", True, True)
 
 
 if __name__ == "__main__":
