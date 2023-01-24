@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 #----------------------------------------------------------------------------
-# deapr
-#  Perform DEAPR process on selected samples of raw data.
+#   deapr - Perform DEAPR process on selected samples of raw data.
+#
+# DEAPR compares gene expression from small groups of experimental samples and
+# their associated controls to identify genes that are differentially expressed.
+# It then applies a weighting strategy based on both fold change and FPKM difference
+# to rank the genes from most differentially expressed to least.
 #
 # This process was described by Sue Rathe and initial code was written
 # by Jeremy White.
@@ -47,7 +51,7 @@
 #    We want to designate SRMM genes as keep if:
 #    The SRMM calculation is > 1.5 OR < -1.5 AND the minimum value in the higher group is > 1
 #  Apply weights
-#    First, keep only samples with SRRM to keep or 2 DELVs
+#    First, keep only samples with SRMM to keep or 2 DELVs
 #    Calculate the absolute fold change and the absolute difference of the values
 #    Sort the absolute value of the fold change (descending) and apply a rank (starting with 1)
 #    Sort the absolute value of the FPKM difference (descending) and apply a rank (starting with 1)
@@ -104,12 +108,12 @@ FOLD_CHANGE_CUTOFF = 2.0
 #  it.  This is tracked as 'DELV'
 DELV_CUTOFF = 2.0
 
-# To keep the SRRM, we require that the samples included in it
+# To keep the SRMM, we require that the samples included in it
 #  have a minimum above 1
-SRRM_MIN_CUTOFF = 1.0
+SRMM_MIN_CUTOFF = 1.0
 
-# And we want the SRRM itself to be 'interesting'
-SRRM_THRESHOLD = 1.5
+# And we want the SRMM itself to be 'interesting'
+SRMM_THRESHOLD = 1.5
 
 class Ensemble:
     """ Hold the data for a specific Ensemble ID """
@@ -134,24 +138,24 @@ class Ensemble:
         self.max_value = max(self.group1_max, self.group2_max)
         self.avg_diff = abs(self.group1_avg - self.group2_avg)
 
-        self.keep_srrm = True
-        self.srrm = 0.0
+        self.keep_srmm = True
+        self.srmm = 0.0
 
-    def calculate_srrm(self):
-        """ Calculate the srrm and indicate if we should keep it """
-        self.keep_srrm = True
+    def calculate_srmm(self):
+        """ Calculate the srmm and indicate if we should keep it """
+        self.keep_srmm = True
         if self.group2_min > self.group1_max:
-            self.srrm = self.group2_min / self.group1_max
-            if self.group2_min < SRRM_MIN_CUTOFF:
-                self.keep_srrm = False
+            self.srmm = self.group2_min / self.group1_max
+            if self.group2_min < SRMM_MIN_CUTOFF:
+                self.keep_srmm = False
         elif self.group1_min > self.group2_max:
-            self.srrm = -1 * self.group1_min / self.group2_max
-            if self.group1_min < SRRM_MIN_CUTOFF:
-                self.keep_srrm = False
+            self.srmm = -1 * self.group1_min / self.group2_max
+            if self.group1_min < SRMM_MIN_CUTOFF:
+                self.keep_srmm = False
         else:
-            self.srrm = 1
-        if abs(self.srrm) <= SRRM_THRESHOLD:
-            self.keep_srrm = False
+            self.srmm = 1
+        if abs(self.srmm) <= SRMM_THRESHOLD:
+            self.keep_srmm = False
 
 
 def sort_fold(ensemble):
@@ -193,7 +197,7 @@ class Data:
                 print("Not a protein " + row['Ensembl ID'], file=sys.stderr)
 
     def run_pass2(self, args):
-        """ Create a subset of the selected set that applies DELV and SRRM logic. """
+        """ Create a subset of the selected set that applies DELV and SRMM logic. """
         for ensemble in self.pass1:
             if ensemble.max_avg <= MAX_AVG_CUTOFF:
                 if args.debug > 2:
@@ -212,7 +216,7 @@ class Data:
                           "; fold change is " + str(ensemble.fold_change), file=sys.stderr)
                 continue
 
-            ensemble.calculate_srrm()
+            ensemble.calculate_srmm()
 
             ensemble.delv1 = False
             if ensemble.group1_max / ensemble.group1_min < DELV_CUTOFF:
@@ -224,12 +228,12 @@ class Data:
             self.pass2.append(ensemble)
 
     def run_pass3(self, args):
-        """ Create a subset that has either both DELVs or SRRM
+        """ Create a subset that has either both DELVs or SRMM
             and then establish a ranking """
         for ensemble in self.pass2:
-            if not ensemble.keep_srrm and not (ensemble.delv1 and ensemble.delv2):
+            if not ensemble.keep_srmm and not (ensemble.delv1 and ensemble.delv2):
                 if args.debug > 2:
-                    print(f"Pruning {ensemble.eid}; keep_srrm {ensemble.keep_srrm}; " +
+                    print(f"Pruning {ensemble.eid}; keep_srmm {ensemble.keep_srmm}; " +
                           f"delve {ensemble.delv1}/{ensemble.delv2}",
                           file=sys.stderr)
                 continue
@@ -248,6 +252,45 @@ class Data:
                               (1.0 - args.fold_weight_float) * ensemble.diff_rank
 
         self.pass3.sort(key=sort_weighted)
+
+def write_report(args, outfile, ensembles):
+    """ Produce the final report """
+    outfile.write("\n,,,FPKMs\n")
+    outfile.write(f",,,{args.group1name},,,{args.group2name},,,,,,,,,,,,\n")
+    outfile.write(",Selected by,,,,,,,,,,,,,,Rankings\n")
+
+    outfile.write("Gene Name,DELV?,SRMM?,")
+    for sample in args.group1.split(","):
+        outfile.write(sample + ",")
+    for sample in args.group2.split(","):
+        outfile.write(sample + ",")
+    outfile.write("Avg Grp 1,Avg Grp 2,")
+    outfile.write("Fold Chg,Abs Fold Chg,Abs Diff,")
+    outfile.write("Abs Fold Chg,Abs Diff,Weighted\n")
+
+    for ensemble in ensembles:
+        outfile.write(f"{ensemble.gene_name},")
+        delv = ""
+        if ensemble.delv1 and ensemble.delv2:
+            delv = "Yes"
+        srmm = ""
+        if ensemble.keep_srmm:
+            srmm = "Yes"
+        outfile.write(f"{delv},{srmm},")
+
+        for sample in ensemble.group1:
+            outfile.write(f"{sample:.3f},")
+        for sample in ensemble.group2:
+            outfile.write(f"{sample:.3f},")
+
+        outfile.write(f"{ensemble.group1_avg:.3f},{ensemble.group2_avg:.3f},")
+        outfile.write(f"{ensemble.fold_change:.3f},{abs(ensemble.fold_change):.3f},")
+        outfile.write(f"{abs(ensemble.avg_diff):.3f},")
+        outfile.write(f"{ensemble.fold_rank},")
+        outfile.write(f"{ensemble.diff_rank},")
+        outfile.write(f"{abs(ensemble.weighted_rank):.1f}")
+        outfile.write("\n")
+
 
 
 #------------------------------------------------------------------------------
@@ -320,8 +363,8 @@ def write_pass2(outfile, ensemble):
         outfile.write("KEEP,")
     else:
         outfile.write(",")
-    outfile.write(f"{ensemble.srrm},")
-    if ensemble.keep_srrm:
+    outfile.write(f"{ensemble.srmm},")
+    if ensemble.keep_srmm:
         outfile.write("KEEP")
 
 def write_pass3(outfile, ensemble):
@@ -345,7 +388,7 @@ def read_data(args):
             reader = csv.DictReader(csvfile, dialect='excel-tab')
             for row in reader:
                 data.raw.append(row)
-    except FileNotFoundError:
+    except OSError:
         print(f"Error: could not read {args.rawdata}", file=sys.stderr)
         return None
     csvfile.close()
@@ -357,7 +400,7 @@ def read_data(args):
             for row in reader:
                 if row['protein'] == 'protein coding':
                     data.proteins.append(row['Ensembl ID'])
-    except FileNotFoundError:
+    except OSError:
         print(f"Error: could not read {args.proteins}", file=sys.stderr)
         return None
     csvfile.close()
@@ -389,7 +432,7 @@ def validate_args(args, data):
 def parse_args():
     """ Parse our command line arguments """
     parser = argparse.ArgumentParser(prog = 'deapr',
-                        description = 'What the program does')
+                        description = 'Apply a process to compare gene expression samples.')
 
     parser.add_argument('rawdata')
     parser.add_argument('proteins')
@@ -397,6 +440,7 @@ def parse_args():
     parser.add_argument('group1name')
     parser.add_argument('group2')
     parser.add_argument('group2name')
+    parser.add_argument('--output', action='store', default='-')
     parser.add_argument('--fold-weight', action='store', default=90)
     parser.add_argument('--minimum-fpkm', action='store', type=float, default=0.01)
     parser.add_argument('-d', '--debug', action='store', type=int, default=0)
@@ -416,6 +460,15 @@ def main(args):
     if not validate_args(args, data):
         sys.exit(2)
 
+    if args.output == "-":
+        outfile = sys.stdout
+    else:
+        try:
+            outfile = open(args.output, "w", encoding=locale.getpreferredencoding())
+        except OSError:
+            print(f"Error: unable to open {args.output}", file=sys.stderr)
+            sys.exit(3)
+
     data.run_pass1(args)
 
     if args.debug > 1:
@@ -428,6 +481,8 @@ def main(args):
     data.run_pass3(args)
     if args.debug > 1:
         write_selected(data.pass3, args, "pass3.csv", True, True)
+
+    write_report(args, outfile, data.pass3)
 
 
 if __name__ == "__main__":
