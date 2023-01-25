@@ -115,8 +115,12 @@ SRMM_MIN_CUTOFF = 1.0
 # And we want the SRMM itself to be 'interesting'
 SRMM_THRESHOLD = 1.5
 
+#------------------------------------------------------------------------------
+#  The Ensemble and Data class hold the bulk of the 'business logic'
+#   They are the meat of this application.
+#------------------------------------------------------------------------------
 class Ensemble:
-    """ Hold the data for a specific Ensemble ID """
+    """ Hold the data for a specific Ensemble ID aka Gene aka row in the table """
     def __init__(self, row, group1, group2, minimum_fpkm):
         """ Make a record for a specific data row """
         self.eid = row['Ensembl ID']
@@ -377,7 +381,11 @@ def write_pass3(outfile, ensemble):
     outfile.write(f"{abs(ensemble.weighted_rank)}")
 
 
-
+#------------------------------------------------------------------------------
+#  Mainline and utility functions.
+#   Below are the functions for parsing arguments, reading data, and so on,
+#   including the program mainline.
+#------------------------------------------------------------------------------
 def read_data(args):
     """ Load the expected data from the raw data file and
         the protein encodings file and return an object
