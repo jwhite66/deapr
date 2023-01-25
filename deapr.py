@@ -15,9 +15,9 @@
 #   raw data        A tab delimited text file that includes a header row, and
 #                    an 'Ensembl ID', a 'Gene Name', and then a variable number
 #                    of samples, each one labeled in the header row.
-#   proteins        A tab delimited text file that indicates which ensembles have
-#                    a protein coding.  There is no header.  Column 1 is ensemble id,
-#                    column 2 is 'protein coding' if the ensemble has a protein coding.
+#   proteins        A tab delimited text file that indicates which genes have
+#                    a protein coding.  There is no header.  Column 1 is ensemble gene id,
+#                    column 2 is 'protein coding' if the gene has a protein coding.
 #   first group     A comma delimited list of samples to use as the first group
 #                    The sample names must match the headers given in the rawdata.
 #   first name      A name for the first group. To be displayed in the final report.
@@ -119,7 +119,7 @@ SRMM_THRESHOLD = 1.5
 #  The Ensemble and Data class hold the bulk of the 'business logic'
 #   They are the meat of this application.
 #------------------------------------------------------------------------------
-class Ensemble:
+class Gene:
     """ Hold the data for a specific Ensemble ID aka Gene aka row in the table """
     def __init__(self, row, group1, group2, minimum_fpkm):
         """ Make a record for a specific data row """
@@ -162,17 +162,17 @@ class Ensemble:
             self.keep_srmm = False
 
 
-def sort_fold(ensemble):
+def sort_fold(gene):
     """ Support sorting by fold, ideally descending """
-    return abs(ensemble.fold_change)
+    return abs(gene.fold_change)
 
-def sort_diff(ensemble):
+def sort_diff(gene):
     """ Support sorting by the delta in the averages, ideally descending """
-    return ensemble.avg_diff
+    return gene.avg_diff
 
-def sort_weighted(ensemble):
+def sort_weighted(gene):
     """ Sort by the weighted rank """
-    return ensemble.weighted_rank
+    return gene.weighted_rank
 
 class Data:
     """ Hold the raw data provided by the files """
@@ -189,75 +189,75 @@ class Data:
             and the data requested by the groups.  Prune and adjust it a bit as well """
         for row in self.raw:
             if row['Ensembl ID'] in self.proteins:
-                ensemble = Ensemble(row, args.group1.split(","), args.group2.split(","),
+                gene = Gene(row, args.group1.split(","), args.group2.split(","),
                                     args.minimum_fpkm)
 
-                if ensemble.max_value >= SAMPLE_THRESHOLD:
-                    self.pass1.append(ensemble)
+                if gene.max_value >= SAMPLE_THRESHOLD:
+                    self.pass1.append(gene)
                 elif args.debug > 2:
                     print("Pruning " + row['Ensembl ID'] +
-                          "; max is " + str(ensemble.max_value), file=sys.stderr)
+                          "; max is " + str(gene.max_value), file=sys.stderr)
             elif args.debug > 2:
                 print("Not a protein " + row['Ensembl ID'], file=sys.stderr)
 
     def run_pass2(self, args):
         """ Create a subset of the selected set that applies DELV and SRMM logic. """
-        for ensemble in self.pass1:
-            if ensemble.max_avg <= MAX_AVG_CUTOFF:
+        for gene in self.pass1:
+            if gene.max_avg <= MAX_AVG_CUTOFF:
                 if args.debug > 2:
-                    print("Pruning " + ensemble.eid +
-                          "; max_avg is " + str(ensemble.max_avg), file=sys.stderr)
+                    print("Pruning " + gene.eid +
+                          "; max_avg is " + str(gene.max_avg), file=sys.stderr)
                 continue
 
-            if ensemble.group2_avg > ensemble.group1_avg:
-                ensemble.fold_change = ensemble.group2_avg / ensemble.group1_avg
+            if gene.group2_avg > gene.group1_avg:
+                gene.fold_change = gene.group2_avg / gene.group1_avg
             else:
-                ensemble.fold_change = ensemble.group1_avg / ensemble.group2_avg * -1.0
+                gene.fold_change = gene.group1_avg / gene.group2_avg * -1.0
 
-            if abs(ensemble.fold_change) <= FOLD_CHANGE_CUTOFF:
+            if abs(gene.fold_change) <= FOLD_CHANGE_CUTOFF:
                 if args.debug > 2:
-                    print("Pruning " + ensemble.eid +
-                          "; fold change is " + str(ensemble.fold_change), file=sys.stderr)
+                    print("Pruning " + gene.eid +
+                          "; fold change is " + str(gene.fold_change), file=sys.stderr)
                 continue
 
-            ensemble.calculate_srmm()
+            gene.calculate_srmm()
 
-            ensemble.delv1 = False
-            if ensemble.group1_max / ensemble.group1_min < DELV_CUTOFF:
-                ensemble.delv1 = True
-            ensemble.delv2 = False
-            if ensemble.group2_max / ensemble.group2_min < DELV_CUTOFF:
-                ensemble.delv2 = True
+            gene.delv1 = False
+            if gene.group1_max / gene.group1_min < DELV_CUTOFF:
+                gene.delv1 = True
+            gene.delv2 = False
+            if gene.group2_max / gene.group2_min < DELV_CUTOFF:
+                gene.delv2 = True
 
-            self.pass2.append(ensemble)
+            self.pass2.append(gene)
 
     def run_pass3(self, args):
         """ Create a subset that has either both DELVs or SRMM
             and then establish a ranking """
-        for ensemble in self.pass2:
-            if not ensemble.keep_srmm and not (ensemble.delv1 and ensemble.delv2):
+        for gene in self.pass2:
+            if not gene.keep_srmm and not (gene.delv1 and gene.delv2):
                 if args.debug > 2:
-                    print(f"Pruning {ensemble.eid}; keep_srmm {ensemble.keep_srmm}; " +
-                          f"delve {ensemble.delv1}/{ensemble.delv2}",
+                    print(f"Pruning {gene.eid}; keep_srmm {gene.keep_srmm}; " +
+                          f"delve {gene.delv1}/{gene.delv2}",
                           file=sys.stderr)
                 continue
 
 
-            self.pass3.append(ensemble)
+            self.pass3.append(gene)
 
         self.pass3.sort(key=sort_fold, reverse=True)
-        for i, ensemble in enumerate(self.pass3):
-            ensemble.fold_rank = i + 1
+        for i, gene in enumerate(self.pass3):
+            gene.fold_rank = i + 1
 
         self.pass3.sort(key=sort_diff, reverse=True)
-        for i, ensemble in enumerate(self.pass3):
-            ensemble.diff_rank = i + 1
-            ensemble.weighted_rank = (args.fold_weight_float * ensemble.fold_rank) + \
-                              (1.0 - args.fold_weight_float) * ensemble.diff_rank
+        for i, gene in enumerate(self.pass3):
+            gene.diff_rank = i + 1
+            gene.weighted_rank = (args.fold_weight_float * gene.fold_rank) + \
+                              (1.0 - args.fold_weight_float) * gene.diff_rank
 
         self.pass3.sort(key=sort_weighted)
 
-def write_report(args, outfile, ensembles):
+def write_report(args, outfile, genes):
     """ Produce the final report """
     outfile.write("\n,,,FPKMs\n")
     outfile.write(f",,,{args.group1name},,,{args.group2name},,,,,,,,,,,,\n")
@@ -272,27 +272,27 @@ def write_report(args, outfile, ensembles):
     outfile.write("Fold Chg,Abs Fold Chg,Abs Diff,")
     outfile.write("Abs Fold Chg,Abs Diff,Weighted\n")
 
-    for ensemble in ensembles:
-        outfile.write(f"{ensemble.gene_name},")
+    for gene in genes:
+        outfile.write(f"{gene.gene_name},")
         delv = ""
-        if ensemble.delv1 and ensemble.delv2:
+        if gene.delv1 and gene.delv2:
             delv = "Yes"
         srmm = ""
-        if ensemble.keep_srmm:
+        if gene.keep_srmm:
             srmm = "Yes"
         outfile.write(f"{delv},{srmm},")
 
-        for sample in ensemble.group1:
+        for sample in gene.group1:
             outfile.write(f"{sample:.3f},")
-        for sample in ensemble.group2:
+        for sample in gene.group2:
             outfile.write(f"{sample:.3f},")
 
-        outfile.write(f"{ensemble.group1_avg:.3f},{ensemble.group2_avg:.3f},")
-        outfile.write(f"{ensemble.fold_change:.3f},{abs(ensemble.fold_change):.3f},")
-        outfile.write(f"{abs(ensemble.avg_diff):.3f},")
-        outfile.write(f"{ensemble.fold_rank},")
-        outfile.write(f"{ensemble.diff_rank},")
-        outfile.write(f"{abs(ensemble.weighted_rank):.1f}")
+        outfile.write(f"{gene.group1_avg:.3f},{gene.group2_avg:.3f},")
+        outfile.write(f"{gene.fold_change:.3f},{abs(gene.fold_change):.3f},")
+        outfile.write(f"{abs(gene.avg_diff):.3f},")
+        outfile.write(f"{gene.fold_rank},")
+        outfile.write(f"{gene.diff_rank},")
+        outfile.write(f"{abs(gene.weighted_rank):.1f}")
         outfile.write("\n")
 
 
@@ -321,64 +321,64 @@ def write_selected(list_to_use, args, fname, use_pass2, use_pass3):
             outfile.write(",Abs fold,Abs diff,Rank fold,Rank diff,Wgt rank")
         outfile.write("\n")
 
-        for ensemble in list_to_use:
-            write_pass1(outfile, ensemble, not use_pass2)
+        for gene in list_to_use:
+            write_pass1(outfile, gene, not use_pass2)
             if use_pass2:
-                write_pass2(outfile, ensemble)
+                write_pass2(outfile, gene)
             if use_pass3:
-                write_pass3(outfile, ensemble)
+                write_pass3(outfile, gene)
             outfile.write("\n")
         outfile.close()
 
-def write_pass1(outfile, ensemble, write_max):
+def write_pass1(outfile, gene, write_max):
     """ Write out basic information common to all passes """
-    outfile.write(f"{ensemble.eid},{ensemble.gene_name},")
-    for sample in ensemble.group1:
+    outfile.write(f"{gene.eid},{gene.gene_name},")
+    for sample in gene.group1:
         outfile.write(f"{sample},")
-    for sample in ensemble.group2:
+    for sample in gene.group2:
         outfile.write(f"{sample},")
     if write_max:
-        outfile.write(f"{ensemble.max_value},")
+        outfile.write(f"{gene.max_value},")
 
-def write_pass2(outfile, ensemble):
+def write_pass2(outfile, gene):
     """ Debug function to write out the values after pass2 """
-    outfile.write(f"{ensemble.group1_avg},")
-    outfile.write(f"{ensemble.group2_avg},")
-    outfile.write(f"{ensemble.fold_change},")
-    outfile.write(f"{ensemble.max_avg},")
-    outfile.write(f"{ensemble.group1_min},")
-    outfile.write(f"{ensemble.group1_max},")
-    mcalc = ensemble.group1_max / ensemble.group1_min
+    outfile.write(f"{gene.group1_avg},")
+    outfile.write(f"{gene.group2_avg},")
+    outfile.write(f"{gene.fold_change},")
+    outfile.write(f"{gene.max_avg},")
+    outfile.write(f"{gene.group1_min},")
+    outfile.write(f"{gene.group1_max},")
+    mcalc = gene.group1_max / gene.group1_min
     outfile.write(f"{mcalc},")
-    if ensemble.delv1:
+    if gene.delv1:
         outfile.write("KEEP,")
     else:
         outfile.write(",")
 
-    outfile.write(f"{ensemble.group2_min},")
-    outfile.write(f"{ensemble.group2_max},")
-    mcalc = ensemble.group2_max / ensemble.group2_min
+    outfile.write(f"{gene.group2_min},")
+    outfile.write(f"{gene.group2_max},")
+    mcalc = gene.group2_max / gene.group2_min
     outfile.write(f"{mcalc},")
-    if ensemble.delv2:
+    if gene.delv2:
         outfile.write("KEEP,")
     else:
         outfile.write(",")
-    if ensemble.delv1 and ensemble.delv2:
+    if gene.delv1 and gene.delv2:
         outfile.write("KEEP,")
     else:
         outfile.write(",")
-    outfile.write(f"{ensemble.srmm},")
-    if ensemble.keep_srmm:
+    outfile.write(f"{gene.srmm},")
+    if gene.keep_srmm:
         outfile.write("KEEP")
 
-def write_pass3(outfile, ensemble):
+def write_pass3(outfile, gene):
     """ Write data out generated in pass 3 """
     outfile.write(",")
-    outfile.write(f"{abs(ensemble.fold_change)},")
-    outfile.write(f"{abs(ensemble.avg_diff)},")
-    outfile.write(f"{ensemble.fold_rank},")
-    outfile.write(f"{ensemble.diff_rank},")
-    outfile.write(f"{abs(ensemble.weighted_rank)}")
+    outfile.write(f"{abs(gene.fold_change)},")
+    outfile.write(f"{abs(gene.avg_diff)},")
+    outfile.write(f"{gene.fold_rank},")
+    outfile.write(f"{gene.diff_rank},")
+    outfile.write(f"{abs(gene.weighted_rank)}")
 
 
 #------------------------------------------------------------------------------
