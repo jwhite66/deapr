@@ -31,8 +31,10 @@
 #                       Level is verbosity, starting at 1, higher means more
 #   --fold-weight=x     Adjust the default percent fold change weight, default 90
 #   --minimum-fpkm=x    Establish the default FPKM value, default 0.01
+#
 # Output:
 #  This will write a csv file suitable for import into Excel to stdout.
+#  It will return 0 on success, > 0 for a failure, with an error written to stderr
 #
 # Approach:
 #  Select only rows that have a protein coding
@@ -187,10 +189,14 @@ class Data:
     def run_pass1(self, args):
         """ Create a subset of the raw data that includes only proteins,
             and the data requested by the groups.  Prune and adjust it a bit as well """
-        for row in self.raw:
+        for i, row in enumerate(self.raw):
             if row['Ensembl ID'] in self.proteins:
-                gene = Gene(row, args.group1.split(","), args.group2.split(","),
-                                    args.minimum_fpkm)
+                try:
+                    gene = Gene(row, args.group1.split(","), args.group2.split(","),
+                                        args.minimum_fpkm)
+                except ValueError:
+                    print(f"Invalid data in line {i+2}", file=sys.stderr)
+                    sys.exit(4)
 
                 if gene.max_value >= SAMPLE_THRESHOLD:
                     self.pass1.append(gene)
