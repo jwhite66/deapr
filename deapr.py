@@ -16,7 +16,7 @@
 #                    an 'Ensembl ID', a 'Gene Name', and then a variable number
 #                    of samples, each one labeled in the header row.
 #   proteins        A tab delimited text file that indicates which genes have
-#                    a protein coding.  There is no header.  Column 1 is ensemble gene id,
+#                    a protein coding.  There is no header.  Column 1 is Ensembl gene id,
 #                    column 2 is 'protein coding' if the gene has a protein coding.
 #   first group     A comma delimited list of samples to use as the first group
 #                    The sample names must match the headers given in the rawdata.
@@ -118,7 +118,7 @@ SRMM_MIN_CUTOFF = 1.0
 SRMM_THRESHOLD = 1.5
 
 #------------------------------------------------------------------------------
-#  The Ensemble and Data class hold the bulk of the 'business logic'
+#  The Gene and Data class hold the bulk of the 'business logic'
 #   They are the meat of this application.
 #------------------------------------------------------------------------------
 class Gene:
