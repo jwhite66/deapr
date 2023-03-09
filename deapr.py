@@ -106,6 +106,10 @@ MAX_AVG_CUTOFF = 1.0
 #  we do not include it in the second pass results.
 FOLD_CHANGE_CUTOFF = 2.0
 
+# If absolute value of the diff change is not more than this cutoff,
+#  we do not include it in the second pass results.
+AVG_DIFF_CUTOFF = 1.0
+
 # If there is a lot of variability in the sample, we may not want
 #  it.  This is tracked as 'DELV'
 DELV_CUTOFF = 2.0
@@ -224,6 +228,12 @@ class Data:
                 if args.debug > 2:
                     print("Pruning " + gene.eid +
                           "; fold change is " + str(gene.fold_change), file=sys.stderr)
+                continue
+
+            if abs(gene.avg_diff) <= AVG_DIFF_CUTOFF:
+                if args.debug > 2:
+                    print("Pruning " + gene.eid +
+                          "; avg_diff is " + str(gene.avg_diff), file=sys.stderr)
                 continue
 
             gene.calculate_srmm()
