@@ -54,6 +54,7 @@
 #    The SRMM calculation is > 1.5 OR < -1.5 AND the minimum value in the higher group is > 1
 #  Apply weights
 #    First, keep only samples with SRMM to keep or 2 DELVs
+#     *But* if a sample has only SRMM, then use the SRMM value in place of the fold change
 #    Calculate the absolute fold change and the absolute difference of the values
 #    Sort the absolute value of the fold change (descending) and apply a rank (starting with 1)
 #    Sort the absolute value of the FPKM difference (descending) and apply a rank (starting with 1)
@@ -244,6 +245,9 @@ class Data:
             gene.delv2 = False
             if gene.group2_max / gene.group2_min < DELV_CUTOFF:
                 gene.delv2 = True
+
+            if gene.keep_srmm and not (gene.delv1 and gene.delv2):
+                gene.fold_change = gene.srmm
 
             self.pass2.append(gene)
 
