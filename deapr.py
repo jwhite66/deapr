@@ -422,7 +422,7 @@ def read_data(args):
             reader = csv.DictReader(csvfile, fieldnames=['Ensembl ID', 'protein'],
                                     dialect='excel-tab')
             for row in reader:
-                if row['protein'] == 'protein coding':
+                if row['protein'] == 'protein coding' or row['protein'] == 'protein_coding':
                     data.proteins.append(row['Ensembl ID'])
     except OSError:
         print(f"Error: could not read {args.proteins}", file=sys.stderr)
