@@ -176,9 +176,16 @@ def read_data(args):
 
     try:
         with open(args.deapr, encoding=locale.getpreferredencoding()) as csvfile:
-            for i in range(0, 4):
-                csvfile.readline()
-            reader = csv.DictReader(csvfile)
+            fields = None
+            for i in range(0, 5):
+                line = csvfile.readline()
+                if line.startswith("Gene Name"):
+                    fields = line.strip().split(",")
+                    break
+            if fields is None:
+                print(f"Error: {args.deapr} does not appear to have gene data", file=sys.stderr)
+                sys.exit(1)
+            reader = csv.DictReader(csvfile, fields)
             for row in reader:
                 data.deapr.append(row)
             data.deapr = data.deapr[:MAX_GENES]
