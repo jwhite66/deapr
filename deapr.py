@@ -157,10 +157,12 @@ class Gene:
         self.keep_srmm = True
         if self.group2_min > self.group1_max:
             self.srmm = self.group2_min / self.group1_max
+            self.srmm_diff = self.group2_min - self.group1_max
             if self.group2_min < SRMM_MIN_CUTOFF:
                 self.keep_srmm = False
         elif self.group1_min > self.group2_max:
             self.srmm = -1 * self.group1_min / self.group2_max
+            self.srmm_diff = self.group1_min - self.group2_max
             if self.group1_min < SRMM_MIN_CUTOFF:
                 self.keep_srmm = False
         else:
@@ -225,18 +227,6 @@ class Data:
             else:
                 gene.fold_change = gene.group1_avg / gene.group2_avg * -1.0
 
-            if abs(gene.fold_change) <= FOLD_CHANGE_CUTOFF:
-                if args.debug > 2:
-                    print("Pruning " + gene.eid +
-                          "; fold change is " + str(gene.fold_change), file=sys.stderr)
-                continue
-
-            if abs(gene.avg_diff) <= AVG_DIFF_CUTOFF:
-                if args.debug > 2:
-                    print("Pruning " + gene.eid +
-                          "; avg_diff is " + str(gene.avg_diff), file=sys.stderr)
-                continue
-
             gene.calculate_srmm()
 
             gene.delv1 = False
@@ -248,6 +238,19 @@ class Data:
 
             if gene.keep_srmm and not (gene.delv1 and gene.delv2):
                 gene.fold_change = gene.srmm
+                gene.avg_diff = gene.srmm_diff
+
+            if abs(gene.fold_change) <= FOLD_CHANGE_CUTOFF:
+                if args.debug > 2:
+                    print("Pruning " + gene.eid +
+                          "; fold change is " + str(gene.fold_change), file=sys.stderr)
+                continue
+
+            if abs(gene.avg_diff) <= AVG_DIFF_CUTOFF:
+                if args.debug > 2:
+                    print("Pruning " + gene.eid +
+                          "; avg_diff is " + str(gene.avg_diff), file=sys.stderr)
+                continue
 
             self.pass2.append(gene)
 
