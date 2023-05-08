@@ -282,7 +282,7 @@ class Data:
 
 def write_report(args, outfile, genes):
     """ Produce the final report """
-    outfile.write("\n,,,FPKMs\n")
+    outfile.write(",,,FPKMs\n")
     outfile.write(f",,,{args.group1name},,,{args.group2name},,,,,,,,,,,,\n")
     outfile.write(",Selected by,,,,,,,,,,,,,,Rankings\n")
 
